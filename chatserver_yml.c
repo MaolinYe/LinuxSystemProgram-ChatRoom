@@ -7,12 +7,15 @@
 #include "chat_yml.h"
 #include <sys/select.h>
 #include <time.h>
+#include <pthread.h>
 #include "minIni.h"
 
 int MAX_LOG_PERUSER;
 int MAX_ONLINE_USERS;
 User users[BuffMiniSize]; // 最大注册用户量
 OfflineMSG *offlineMsgs = NULL; // 离线消息链表头节点
+int register_fd, login_fd, chat_fd, logout_fd;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; // 初始化互斥锁
 void init() {
     offlineMsgs = malloc(sizeof(OfflineMSG));
     if (ini_gets("FIFO", "REG_FIFO", "", REG_FIFO, BuffSize, Config) == 0 ||
@@ -25,6 +28,16 @@ void init() {
         fprintf(stderr, "Error: failed to read configuration file %s\n", Config);
         exit(1);
     }
+    // 创建或打开FIFO文件
+    mkfifo(REG_FIFO, 0777);
+    mkfifo(LOGIN_FIFO, 0777);
+    mkfifo(MSG_FIFO, 0777);
+    mkfifo(LOGOUT_FIFO, 0777);
+    // 打开FIFO文件 O_RDWR 可读写 O_NONBLOCK 非阻塞
+    register_fd = open(REG_FIFO, O_RDWR | O_NONBLOCK);
+    login_fd = open(LOGIN_FIFO, O_RDWR | O_NONBLOCK);
+    chat_fd = open(MSG_FIFO, O_RDWR | O_NONBLOCK);
+    logout_fd = open(LOGOUT_FIFO, O_RDWR | O_NONBLOCK);
 }
 
 char *getUserFIFO(char *name) {
@@ -36,17 +49,21 @@ char *getUserFIFO(char *name) {
 }
 
 void writeToUser(const char *fifo, const void *buffer, size_t n) {
+    pthread_mutex_lock(&mutex); // 加锁
     int fd = open(fifo, O_RDWR | O_NONBLOCK);
     write(fd, buffer, n);
+    pthread_mutex_unlock(&mutex); // 解锁
 }
 
 
 void logger(const char *file, char *buffer) {
+    pthread_mutex_lock(&mutex); // 加锁
     char log[BuffSize];
     time_t currentTime;
     time(&currentTime);
     sprintf(log, "%s %s", buffer, ctime(&currentTime));
     printf("%s", log);
+    pthread_mutex_unlock(&mutex); // 解锁
 }
 
 void insertOfflineMSG(OfflineMSG *new) {
@@ -82,7 +99,9 @@ void sendOfflineMSG(char *receiver) {
     }
 }
 
-void logoutHandler(User *user) {
+void *logoutHandler() {
+    User *user = malloc(sizeof(User));
+    read(logout_fd, user, sizeof(User));
     for (int i = 0; i < userNumber; i++) {
         if (strcmp(user->username, users[i].username) == 0) {
             users[i].loginCount--;
@@ -97,9 +116,13 @@ void logoutHandler(User *user) {
     sprintf(log, "[Logout] %s", user->username);
     sprintf(logFile, "%s%s", LOGFILES, user->username);
     logger(logFile, log);
+    free(user);
+    return NULL;
 }
 
-void registerHandler(User *user) {
+void *registerHandler() {
+    User *user = malloc(sizeof(User));
+    read(register_fd, user, sizeof(User));
     char message[BuffSize];
     int ok = 0;
     for (int i = 0; i < userNumber; i++) {
@@ -121,9 +144,13 @@ void registerHandler(User *user) {
         logger(logFile, log);
     }
     writeToUser(user->fifo, message, BuffSize);
+    free(user);
+    return NULL;
 }
 
-void loginHandler(User *user) {
+void *loginHandler() {
+    User *user = malloc(sizeof(User));
+    read(login_fd, user, sizeof(User));
     Response response;
     response.ok = -1;
     if (userOnline == MAX_ONLINE_USERS) { // 在线用户数达到上限
@@ -161,9 +188,13 @@ void loginHandler(User *user) {
     if (response.ok == 0) {
         sendOfflineMSG(user->username); // 发送离线消息
     }
+    free(user);
+    return NULL;
 }
 
-void chatHandler(Chat *chat) {
+void *chatHandler() {
+    Chat *chat = malloc(sizeof(Chat));
+    read(chat_fd, chat, sizeof(Chat));
     char message[BuffSize];
     int ok = -1;
     for (int i = 0; i < userNumber; i++) {
@@ -191,23 +222,14 @@ void chatHandler(Chat *chat) {
         sprintf(message, "User %s does not exit!", chat->receiver);
     }
     writeToUser(getUserFIFO(chat->sender), message, BuffSize);
+    free(chat);
+    return NULL;
 }
 
 int main() {
     init();
     fd_set fds, read_fds; // 文件描述符集合
     int max_fd;
-    int register_fd, login_fd, chat_fd, logout_fd;
-    // 创建或打开FIFO文件
-    mkfifo(REG_FIFO, 0777);
-    mkfifo(LOGIN_FIFO, 0777);
-    mkfifo(MSG_FIFO, 0777);
-    mkfifo(LOGOUT_FIFO, 0777);
-    // 打开FIFO文件 O_RDWR 可读写 O_NONBLOCK 非阻塞
-    register_fd = open(REG_FIFO, O_RDWR | O_NONBLOCK);
-    login_fd = open(LOGIN_FIFO, O_RDWR | O_NONBLOCK);
-    chat_fd = open(MSG_FIFO, O_RDWR | O_NONBLOCK);
-    logout_fd = open(LOGOUT_FIFO, O_RDWR | O_NONBLOCK);
     // 指定要检查的文件描述符
     FD_ZERO(&fds);
     FD_SET(register_fd, &fds);
@@ -221,10 +243,6 @@ int main() {
     printf("[Server by YeMaolin]: Listening...\n");
     while (1) {
         read_fds = fds;
-        User registerData;
-        User loginData;
-        Chat chatData;
-        User logoutData;
         // 使用select监听文件描述符
         if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
             perror("select");
@@ -232,24 +250,24 @@ int main() {
         }
         // 检查哪些文件描述符已经准备好
         if (FD_ISSET(register_fd, &read_fds)) {
-            // 处理注册
-            read(register_fd, &registerData, sizeof(User));
-            registerHandler(&registerData);
+            pthread_t pthread;// 处理注册
+            pthread_create(&pthread, NULL, &registerHandler, NULL);
+            pthread_join(pthread,NULL);
         }
         if (FD_ISSET(login_fd, &read_fds)) {
-            // 处理登录
-            read(login_fd, &loginData, sizeof(User));
-            loginHandler(&loginData);
+            pthread_t pthread; // 处理登录
+            pthread_create(&pthread, NULL, &loginHandler, NULL);
+            pthread_join(pthread,NULL);
         }
         if (FD_ISSET(chat_fd, &read_fds)) {
-            // 处理聊天
-            read(chat_fd, &chatData, sizeof(Chat));
-            chatHandler(&chatData);
+            pthread_t pthread;// 处理聊天
+            pthread_create(&pthread, NULL, &chatHandler, NULL);
+            pthread_join(pthread,NULL);
         }
         if (FD_ISSET(logout_fd, &read_fds)) {
-            // 处理注销
-            read(logout_fd, &logoutData, sizeof(User));
-            logoutHandler(&logoutData);
+            pthread_t pthread;// 处理注销
+            pthread_create(&pthread, NULL, &logoutHandler, NULL);
+            pthread_join(pthread,NULL);
         }
     }
 }
