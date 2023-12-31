@@ -57,7 +57,7 @@ void registerClient(User *user) {
 }
 
 void chatClient(User *user) {
-    char what, message[BuffSize];
+    char what, message[BuffSize],receivers[BuffSize];
     printf("Chat Page: press r for receive | s for send | q for logout\n");
     while ((what = getchar()) == '\n') {}
     if (what == 'q') {
@@ -67,24 +67,29 @@ void chatClient(User *user) {
     } else if (what == 's') { // 发送信息
         Chat chat;
         strcpy(chat.sender, user->username);
-        printf("send username: ");
-        scanf("%s", chat.receiver);
-        getchar();
+        getchar(); // 吃回车
+        printf("receivers username: ");
+        scanf("%[^\n]", receivers);
+        getchar(); // 吃回车
         printf("send data: ");
         scanf("%[^\n]", message);
         sprintf(chat.message, "[%s]: %s", user->username, message);
         int chat_fd = open(MSG_FIFO, O_RDWR | O_NONBLOCK);
-        write(chat_fd, &chat, sizeof(Chat));
-        // 等待服务器响应
-        int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
-        while (1) {
-            int result = read(fd, message, BuffSize);
-            if (result > 0) {
-                printf("%s\n", message);
-                break;
+        char*receiver=strtok(receivers, " ");
+        while(receiver){
+            strcpy(chat.receiver,receiver);
+            write(chat_fd, &chat, sizeof(Chat));
+            // 等待服务器响应
+            int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
+            while (1) {
+                int result = read(fd, message, BuffSize);
+                if (result > 0) {
+                    printf("%s\n", message);
+                    break;
+                }
             }
+            receiver=strtok(NULL," ");
         }
-
     } else if (what == 'r') { //接收消息
         int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
         int result = read(fd, message, BuffSize);
