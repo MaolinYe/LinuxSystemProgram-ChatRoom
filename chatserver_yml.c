@@ -61,7 +61,7 @@ void logger(const char *file, char *buffer) {
     char log[BuffSize];
     time_t currentTime;
     time(&currentTime);
-    sprintf(log, "%s %s", buffer, ctime(&currentTime));
+    sprintf(log, "%s  %s", buffer, ctime(&currentTime));
     printf("%s", log);
     pthread_mutex_unlock(&mutex); // 解锁
 }
@@ -89,7 +89,7 @@ void sendOfflineMSG(char *receiver) {
         if (strcmp(p->receiver, receiver) == 0) {
             writeToUser(getUserFIFO(receiver), p->message, BuffSize);
             char logFile[BuffSize], log[BuffSize]; // 准备写日志
-            sprintf(log, "[Chat] Sender: %s Receiver: %s True", p->sender, receiver);
+            sprintf(log, "[Chat]  Sender: %s  Receiver: %s  True", p->sender, receiver);
             sprintf(logFile, "%s%s", LOGFILES, p->sender);
             logger(logFile, log);
             deleteOfflineMSG(p);
@@ -113,7 +113,7 @@ void *logoutHandler() {
     sprintf(message, "Logout succeed!");
     writeToUser(user->fifo, message, BuffSize);
     char logFile[BuffSize], log[BuffSize]; // 准备写日志
-    sprintf(log, "[Logout] %s", user->username);
+    sprintf(log, "[Logout]  User: %s", user->username);
     sprintf(logFile, "%s%s", LOGFILES, user->username);
     logger(logFile, log);
     free(user);
@@ -139,7 +139,7 @@ void *registerHandler() {
         sprintf(message, "Register succeed!");
         userNumber++;
         char logFile[BuffSize], log[BuffSize]; // 准备写日志
-        sprintf(log, "[Register] %s", user->username);
+        sprintf(log, "[Register]  User: %s", user->username);
         sprintf(logFile, "%s%s", LOGFILES, user->username);
         logger(logFile, log);
     }
@@ -169,7 +169,7 @@ void *loginHandler() {
                     response.ok = 0;
                     userOnline++; // 在线用户数++
                     char logFile[BuffSize], log[BuffSize]; // 准备写日志
-                    sprintf(log, "[Login] %s", user->username);
+                    sprintf(log, "[Login]  User: %s", user->username);
                     sprintf(logFile, "%s%s", LOGFILES, user->username);
                     logger(logFile, log);
                     break;
@@ -206,10 +206,10 @@ void *chatHandler() {
                 strcpy(p->receiver, chat->receiver);
                 strcpy(p->message, chat->message);
                 insertOfflineMSG(p);
-                sprintf(log, "[Chat] Sender: %s Receiver: %s False", chat->sender, chat->receiver);
+                sprintf(log, "[Chat]  Sender: %s  Receiver: %s  False", chat->sender, chat->receiver);
             } else {
                 writeToUser(users[i].fifo, chat->message, BuffSize);
-                sprintf(log, "[Chat] Sender: %s Receiver: %s True", chat->sender, chat->receiver);
+                sprintf(log, "[Chat]  Sender: %s  Receiver: %s  True", chat->sender, chat->receiver);
             }
             sprintf(logFile, "%s%s", LOGFILES, chat->sender);
             logger(logFile, log);
