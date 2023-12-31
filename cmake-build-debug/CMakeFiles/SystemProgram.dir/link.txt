@@ -1,0 +1,1 @@
+/usr/bin/cc -g   CMakeFiles/SystemProgram.dir/chatserver_yml.c.o CMakeFiles/SystemProgram.dir/chatclient_yml.c.o CMakeFiles/SystemProgram.dir/minIni.c.o CMakeFiles/SystemProgram.dir/main.c.o  -o SystemProgram 
