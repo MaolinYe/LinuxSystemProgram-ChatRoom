@@ -1,1 +1,4 @@
-Cannot create directory /home/yemaolin2021155015/cmake-build-debug: `mkdir "/home/yemaolin2021155015/cmake-build-debug"` failed with exit code 1: stdout='', stderr='mkdir: cannot create directory '/home/yemaolin2021155015/cmake-build-debug': Permission denied'
+/usr/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/yemaolin2021155015
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/yemaolin2021155015/cmake-build-debug

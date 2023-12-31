@@ -46,7 +46,7 @@ void logger(const char *file, char *buffer) {
     time_t currentTime;
     time(&currentTime);
     sprintf(log, "%s %s", buffer, ctime(&currentTime));
-    printf("%s\n%s", file, log);
+    printf("%s", log);
 }
 
 void insertOfflineMSG(OfflineMSG *new) {
@@ -83,7 +83,12 @@ void sendOfflineMSG(char *receiver) {
 }
 
 void logoutHandler(User *user) {
-    user->loginCount--;
+    for (int i = 0; i < userNumber; i++) {
+        if (strcmp(user->username, users[i].username) == 0) {
+            users[i].loginCount--;
+            break;
+        }
+    }
     userOnline--;
     char message[BuffSize];
     sprintf(message, "Logout succeed!");
@@ -132,10 +137,10 @@ void loginHandler(User *user) {
                         break;
                     }
                     strcpy(users[i].fifo, user->fifo);
+                    users[i].loginCount++;
                     sprintf(response.message, "Login succeed!");
                     response.ok = 0;
                     userOnline++; // 在线用户数++
-                    sendOfflineMSG(user->username); // 发送离线消息
                     char logFile[BuffSize], log[BuffSize]; // 准备写日志
                     sprintf(log, "[Login] %s", user->username);
                     sprintf(logFile, "%s%s", LOGFILES, user->username);
@@ -153,6 +158,9 @@ void loginHandler(User *user) {
         }
     }
     writeToUser(user->fifo, &response, sizeof(Response));
+    if (response.ok == 0) {
+        sendOfflineMSG(user->username); // 发送离线消息
+    }
 }
 
 void chatHandler(Chat *chat) {

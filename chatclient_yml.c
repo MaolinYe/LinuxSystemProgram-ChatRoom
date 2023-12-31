@@ -57,8 +57,8 @@ void registerClient(User *user) {
 }
 
 void chatClient(User *user) {
-    char what;
-    printf("Chat Page:\npress r for receive | s for send | q for logout\n");
+    char what, message[BuffSize];
+    printf("Chat Page: press r for receive | s for send | q for logout\n");
     while ((what = getchar()) == '\n') {}
     if (what == 'q') {
         logout(user);
@@ -71,27 +71,27 @@ void chatClient(User *user) {
         scanf("%s", chat.receiver);
         getchar();
         printf("send data: ");
-        scanf("%[^\n]", chat.message);
+        scanf("%[^\n]", message);
+        sprintf(chat.message, "[%s]: %s", user->username, message);
         int chat_fd = open(MSG_FIFO, O_RDWR | O_NONBLOCK);
         write(chat_fd, &chat, sizeof(Chat));
         // 等待服务器响应
         int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
-        char message[BuffSize];
-        int result = read(fd, message, BuffSize);
-        if (result > 0) {
-            printf("%s\n", message);
-        } else {
-            printf("There is no message.\n");
-        }
-    } else if (what == 'r') { //接收消息
-        int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
-        char message[BuffSize];
         while (1) {
             int result = read(fd, message, BuffSize);
             if (result > 0) {
                 printf("%s\n", message);
                 break;
             }
+        }
+
+    } else if (what == 'r') { //接收消息
+        int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
+        int result = read(fd, message, BuffSize);
+        if (result > 0) {
+            printf("%s\n", message);
+        } else {
+            printf("There is no message.\n");
         }
     } else {
         printf("Wrong press key, please try again!\n");
@@ -120,7 +120,7 @@ void loginClient(User *user) {
 
 void showPage(User *user) {
     char what;
-    printf("Chat Client:\npress r for register | l for login | q for quit\n");
+    printf("Chat Client: press r for register | l for login | q for quit\n");
     while ((what = getchar()) == '\n') {}
     if (what == 'q') {
         exit(0);
@@ -143,7 +143,7 @@ void showPage(User *user) {
 int main() {
     init();
     User user;
-    sprintf(user.fifo, "client_fifo/client_fifo%d", getpid());
+    sprintf(user.fifo, "/home/yemaolin2021155015/client_fifo/client_fifo%d", getpid());
     sprintf(client_fifo, "%s", user.fifo);
     signal(SIGKILL, handler);//收到的kill进程
     signal(SIGINT, handler);//终端释放的终止信号Ctrl+C
