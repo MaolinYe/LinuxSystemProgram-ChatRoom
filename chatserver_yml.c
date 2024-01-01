@@ -12,6 +12,7 @@
 #include "minIni.h"
 #include <sys/param.h>
 #include <sys/types.h>
+
 int MAX_LOG_PERUSER;
 int MAX_ONLINE_USERS;
 User users[BuffMiniSize]; // 最大注册用户量
@@ -145,7 +146,7 @@ void *registerHandler() {
         char logFile[BuffSize], log[BuffSize]; // 准备写日志
         sprintf(log, "[Register]  User: %s", user->username);
         sprintf(logFile, "%s%s", LOGFILES, user->username);
-        int fd = open(logFile, O_TRUNC); //创建日志文件
+        int fd = open(logFile, O_CREAT | O_TRUNC); //创建日志文件
         if (fd < 0) {
             perror("Log file creation failed");
             exit(EXIT_FAILURE);
@@ -262,7 +263,7 @@ int init_daemon(void) { // 突变守护进程
     chdir("/");    /*改变工作目录，使得进程不与任何文件系统联系*/
     umask(0);    /*将文件当时创建屏蔽字设置为0*/
     signal(SIGCHLD, SIG_IGN);    /*忽略SIGCHLD信号*/
-    signal(SIGTERM, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);    /*忽略SIGTERM信号*/
     return 0;
 }
 
@@ -281,7 +282,6 @@ int main() {
     max_fd = register_fd > login_fd ? register_fd : login_fd;
     max_fd = max_fd > chat_fd ? max_fd : chat_fd;
     max_fd = max_fd > logout_fd ? max_fd : logout_fd;
-//    printf("[Server by YeMaolin]: Listening...\n");
     while (1) {
         read_fds = fds;
         // 使用select监听文件描述符
