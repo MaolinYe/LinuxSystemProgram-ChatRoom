@@ -5,6 +5,7 @@
 #include<sys/stat.h>
 #include<fcntl.h>
 #include <signal.h>
+#include <time.h>
 #include"chat_yml.h"
 #include"minIni.h"
 
@@ -57,7 +58,7 @@ void registerClient(User *user) {
 }
 
 void chatClient(User *user) {
-    char what, message[BuffSize],receivers[BuffSize];
+    char what, message[BuffSize], receivers[BuffSize];
     printf("Chat Page: press r for receive | s for send | q for logout\n");
     while ((what = getchar()) == '\n') {}
     if (what == 'q') {
@@ -73,11 +74,13 @@ void chatClient(User *user) {
         getchar(); // 吃回车
         printf("send data: ");
         scanf("%[^\n]", message);
-        sprintf(chat.message, "[%s]: %s", user->username, message);
+        time_t currentTime;
+        time(&currentTime);
+        sprintf(chat.message, "%s[%s]: %s", ctime(&currentTime), user->username, message);
         int chat_fd = open(MSG_FIFO, O_RDWR | O_NONBLOCK);
-        char*receiver=strtok(receivers, " ");
-        while(receiver){
-            strcpy(chat.receiver,receiver);
+        char *receiver = strtok(receivers, " ");
+        while (receiver) {
+            strcpy(chat.receiver, receiver);
             write(chat_fd, &chat, sizeof(Chat));
             // 等待服务器响应
             int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
@@ -88,15 +91,18 @@ void chatClient(User *user) {
                     break;
                 }
             }
-            receiver=strtok(NULL," ");
+            receiver = strtok(NULL, " ");
         }
     } else if (what == 'r') { //接收消息
         int fd = open(user->fifo, O_RDWR | O_NONBLOCK);
-        int result = read(fd, message, BuffSize);
-        if (result > 0) {
-            printf("%s\n", message);
-        } else {
-            printf("There is no message.\n");
+        while(1){
+            int result = read(fd, message, BuffSize);
+            if (result > 0) {
+                printf("%s\n", message);
+            } else {
+                printf("There is no message.\n");
+                break;
+            }
         }
     } else {
         printf("Wrong press key, please try again!\n");
@@ -115,7 +121,7 @@ void loginClient(User *user) {
             break;
         }
     }
-    if (response.ok != 0) { // 登录失败
+    if (response.ok != 0) { // 登录失败l
         printf("%s\n", response.message);
         showPage(user);
     } else {

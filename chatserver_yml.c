@@ -104,18 +104,19 @@ void deleteOfflineMSG(OfflineMSG *p) {
 }
 
 void sendOfflineMSG(char *receiver) {
-    OfflineMSG *p = offlineMsgs;
+    OfflineMSG *p = offlineMsgs,*temp;
     while (p) {
         if (strcmp(p->receiver, receiver) == 0) {
+            temp=p->next;
             writeToUser(getUserFIFO(receiver), p->message, BuffSize);
             char logFile[BuffSize], log[BuffSize]; // 准备写日志
             sprintf(log, "[Chat]  Sender: %s  Receiver: %s  True", p->sender, receiver);
             sprintf(logFile, "%s%s", LOGFILES, p->sender);
             logger(logFile, log);
             deleteOfflineMSG(p);
-            return;
-        }
-        p = p->next;
+            p=temp;
+        } else
+            p = p->next;
     }
 }
 
@@ -192,6 +193,7 @@ void *loginHandler() {
                 if (strcmp(user->password, users[i].password) == 0) {
                     if (users[i].loginCount == MAX_LOG_PERUSER) { // 用户同一时刻在终端登录数达到上限
                         sprintf(response.message, "The user has already logged in to another terminal.");
+                        response.ok = -3;
                         break;
                     }
                     strcpy(users[i].fifo, user->fifo);
