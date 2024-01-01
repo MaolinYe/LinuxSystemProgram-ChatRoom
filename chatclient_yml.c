@@ -17,7 +17,7 @@ void handler(int sig) {
     exit(1);
 }
 
-void init() {
+void init_server() {
     if (ini_gets("FIFO", "REG_FIFO", "", REG_FIFO, BuffSize, Config) == 0 ||
         ini_gets("FIFO", "LOGIN_FIFO", "", LOGIN_FIFO, BuffSize, Config) == 0 ||
         ini_gets("FIFO", "MSG_FIFO", "", MSG_FIFO, BuffSize, Config) == 0 ||
@@ -146,7 +146,7 @@ void showPage(User *user) {
 }
 
 int main() {
-    init();
+    init_server();
     User user;
     sprintf(user.fifo, "/home/yemaolin2021155015/client_fifo/client_fifo%d", getpid());
     sprintf(client_fifo, "%s", user.fifo);

@@ -2,7 +2,7 @@
 #define SYSTEMPROGRAM_MESSAGE_H
 #define BuffSize 128
 #define BuffMiniSize 16
-#define Config  "server_config.ini"
+#define Config  "/home/yemaolin2021155015/server_config.ini"
 char REG_FIFO[BuffSize];
 char LOGIN_FIFO[BuffSize];
 char MSG_FIFO[BuffSize];
