@@ -62,7 +62,9 @@ void logger(const char *file, char *buffer) {
     time_t currentTime;
     time(&currentTime);
     sprintf(log, "%s  %s", buffer, ctime(&currentTime));
-    printf("%s", log);
+    int fd = open(file, O_WRONLY | O_APPEND);
+    write(fd, log, strlen(log));
+    close(fd);
     pthread_mutex_unlock(&mutex); // 解锁
 }
 
@@ -141,6 +143,16 @@ void *registerHandler() {
         char logFile[BuffSize], log[BuffSize]; // 准备写日志
         sprintf(log, "[Register]  User: %s", user->username);
         sprintf(logFile, "%s%s", LOGFILES, user->username);
+        int fd = open(logFile, O_TRUNC); //创建日志文件
+        if (fd < 0) {
+            perror("Log file creation failed");
+            exit(EXIT_FAILURE);
+        }
+        close(fd);
+        if (chmod(logFile, S_IRUSR | S_IWUSR) != 0) { // 日志文件只有超级用户可以读、写
+            perror("Failed to set file permissions");
+            exit(EXIT_FAILURE);
+        }
         logger(logFile, log);
     }
     writeToUser(user->fifo, message, BuffSize);
@@ -252,22 +264,22 @@ int main() {
         if (FD_ISSET(register_fd, &read_fds)) {
             pthread_t pthread;// 处理注册
             pthread_create(&pthread, NULL, &registerHandler, NULL);
-            pthread_join(pthread,NULL);
+            pthread_join(pthread, NULL);
         }
         if (FD_ISSET(login_fd, &read_fds)) {
             pthread_t pthread; // 处理登录
             pthread_create(&pthread, NULL, &loginHandler, NULL);
-            pthread_join(pthread,NULL);
+            pthread_join(pthread, NULL);
         }
         if (FD_ISSET(chat_fd, &read_fds)) {
             pthread_t pthread;// 处理聊天
             pthread_create(&pthread, NULL, &chatHandler, NULL);
-            pthread_join(pthread,NULL);
+            pthread_join(pthread, NULL);
         }
         if (FD_ISSET(logout_fd, &read_fds)) {
             pthread_t pthread;// 处理注销
             pthread_create(&pthread, NULL, &logoutHandler, NULL);
-            pthread_join(pthread,NULL);
+            pthread_join(pthread, NULL);
         }
     }
 }
