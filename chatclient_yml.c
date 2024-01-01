@@ -112,13 +112,22 @@ void loginClient(User *user) {
     while (1) {
         int result = read(fd, &response, sizeof(Response));
         if (result > 0) {
-            printf("%s\n", response.message);
             break;
         }
     }
     if (response.ok != 0) { // 登录失败
+        printf("%s\n", response.message);
         showPage(user);
     } else {
+        fd = open(user->fifo, O_RDWR | O_NONBLOCK);
+        char buffer[BuffSize];
+        while (1) {
+            int result = read(fd, buffer, BuffSize);
+            if (result > 0) {
+                printf("%s\n", buffer);
+                break;
+            }
+        }
         chatClient(user);
     }
 }

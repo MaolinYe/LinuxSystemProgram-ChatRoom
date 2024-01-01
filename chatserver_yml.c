@@ -58,6 +58,21 @@ void writeToUser(const char *fifo, const void *buffer, size_t n) {
     pthread_mutex_unlock(&mutex); // 解锁
 }
 
+void broadcast(char *news) { // 将在线的总人数及用户名显示给所有的用户
+    char buffer[BuffSize];
+    sprintf(buffer, "%s  OnlineUser: %d  ", news, userOnline);
+    for (int i = 0; i < userNumber; i++) {
+        if (users[i].loginCount > 0) {
+            strcat(buffer, users[i].username);
+            strcat(buffer, " ");
+        }
+    }
+    for (int i = 0; i < userNumber; i++) {
+        if (users[i].loginCount > 0) {
+            writeToUser(users[i].fifo, buffer, BuffSize);
+        }
+    }
+}
 
 void logger(const char *file, char *buffer) {
     pthread_mutex_lock(&mutex); // 加锁
@@ -115,8 +130,9 @@ void *logoutHandler() {
     }
     userOnline--;
     char message[BuffSize];
-    sprintf(message, "Logout succeed!");
+    sprintf(message, "[Logout] %s", user->username);
     writeToUser(user->fifo, message, BuffSize);
+    broadcast(message);
     char logFile[BuffSize], log[BuffSize]; // 准备写日志
     sprintf(log, "[Logout]  User: %s", user->username);
     sprintf(logFile, "%s%s", LOGFILES, user->username);
@@ -180,7 +196,7 @@ void *loginHandler() {
                     }
                     strcpy(users[i].fifo, user->fifo);
                     users[i].loginCount++;
-                    sprintf(response.message, "Login succeed!");
+                    sprintf(response.message, "[Login] %s", user->username);
                     response.ok = 0;
                     userOnline++; // 在线用户数++
                     char logFile[BuffSize], log[BuffSize]; // 准备写日志
@@ -201,6 +217,7 @@ void *loginHandler() {
     }
     writeToUser(user->fifo, &response, sizeof(Response));
     if (response.ok == 0) {
+        broadcast(response.message);
         sendOfflineMSG(user->username); // 发送离线消息
     }
     free(user);
