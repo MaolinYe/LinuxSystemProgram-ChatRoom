@@ -143,7 +143,7 @@ void *registerHandler() {
         char logFile[BuffSize], log[BuffSize]; // 准备写日志
         sprintf(log, "[Register]  User: %s", user->username);
         sprintf(logFile, "%s%s", LOGFILES, user->username);
-        int fd = open(logFile, O_TRUNC); //创建日志文件
+        int fd = open(logFile, O_CREAT | O_TRUNC); //创建日志文件
         if (fd < 0) {
             perror("Log file creation failed");
             exit(EXIT_FAILURE);
