@@ -32,4 +32,19 @@ struct OfflineMSG {
     struct OfflineMSG *next;
 };
 typedef struct OfflineMSG OfflineMSG;
+typedef struct {
+    void (*function)(void *); // 函数指针，表示任务的函数
+    void *argument;          // 函数参数
+} Task;
+
+typedef struct {
+    Task *tasks;            // 任务数组
+    int size;                 // 当前任务数量
+    int front;                // 队头索引
+    int rear;                 // 队尾索引
+    pthread_mutex_t mutex;    // 互斥锁
+    pthread_cond_t condition; // 条件变量
+    pthread_t *threads;       // 线程数组
+    int shutdown;          // 是否销毁线程池
+} ThreadPool;
 #endif //SYSTEMPROGRAM_MESSAGE_H

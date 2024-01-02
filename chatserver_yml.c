@@ -12,9 +12,10 @@
 #include "minIni.h"
 #include <sys/param.h>
 #include <sys/types.h>
-
+#define ThreadPoolLog "/var/log/chat-logs/threads-log"
 int MAX_LOG_PERUSER;
 int MAX_ONLINE_USERS;
+int POOLSIZE;
 User users[BuffMiniSize]; // 最大注册用户量
 OfflineMSG *offlineMsgs = NULL; // 离线消息链表头节点
 int register_fd, login_fd, chat_fd, logout_fd;
@@ -27,6 +28,7 @@ void init_server() { // 读取配置文件初始化服务器
         ini_gets("FIFO", "LOGOUT_FIFO", "", LOGOUT_FIFO, BuffSize, Config) == 0 ||
         (MAX_ONLINE_USERS = ini_getl("SERVER", "MAX_ONLINE_USERS", 0, Config)) == 0 ||
         (MAX_LOG_PERUSER = ini_getl("SERVER", "MAX_LOG_PERUSER", 0, Config)) == 0 ||
+        (POOLSIZE = ini_getl("SERVER", "POOLSIZE", 0, Config)) == 0 ||
         ini_gets("SERVER", "LOGFILES", "", LOGFILES, BuffSize, Config) == 0) {
         fprintf(stderr, "Error: failed to read configuration file %s\n", Config);
         exit(1);
@@ -104,17 +106,17 @@ void deleteOfflineMSG(OfflineMSG *p) {
 }
 
 void sendOfflineMSG(char *receiver) {
-    OfflineMSG *p = offlineMsgs,*temp;
+    OfflineMSG *p = offlineMsgs, *temp;
     while (p) {
         if (strcmp(p->receiver, receiver) == 0) {
-            temp=p->next;
+            temp = p->next;
             writeToUser(getUserFIFO(receiver), p->message, BuffSize);
             char logFile[BuffSize], log[BuffSize]; // 准备写日志
             sprintf(log, "[Chat]  Sender: %s  Receiver: %s  True", p->sender, receiver);
             sprintf(logFile, "%s%s", LOGFILES, p->sender);
             logger(logFile, log);
             deleteOfflineMSG(p);
-            p=temp;
+            p = temp;
         } else
             p = p->next;
     }
@@ -286,9 +288,79 @@ int init_daemon(void) { // 突变守护进程
     return 0;
 }
 
+void *execute(void *arg) {
+    ThreadPool *threadPool = (ThreadPool *) arg;
+    while (threadPool->shutdown) {
+        pthread_mutex_lock(&threadPool->mutex);
+        while (threadPool->size == 0) {    // 等待直到有任务
+            pthread_cond_wait(&threadPool->condition, &threadPool->mutex);
+        }
+        // 取出任务
+        Task task = threadPool->tasks[threadPool->front];
+        threadPool->front = (threadPool->front + 1) % POOLSIZE;
+        threadPool->size--;
+        // 执行任务
+        pthread_cond_signal(&threadPool->condition);
+        pthread_mutex_unlock(&threadPool->mutex);
+        task.function(task.argument);
+        free(task.argument);
+        logger(ThreadPoolLog,"[Thread Recycle]");
+    }
+    return NULL;
+}
+
+void init_thread_pool(ThreadPool *threadPool) {
+    int fd = open(ThreadPoolLog, O_CREAT | O_TRUNC); //创建日志文件
+    if (fd < 0) {
+        perror("Log file creation failed");
+        exit(EXIT_FAILURE);
+    }
+    threadPool->tasks = (Task *) malloc(sizeof(Task) * POOLSIZE);
+    threadPool->size = 0;
+    threadPool->front = 0;
+    threadPool->rear = 0;
+    threadPool->shutdown = -1;
+    pthread_mutex_init(&threadPool->mutex, NULL);
+    pthread_cond_init(&threadPool->condition, NULL);
+    threadPool->threads = (pthread_t *) malloc(sizeof(pthread_t) * POOLSIZE);
+    for (int i = 0; i < POOLSIZE; ++i) {
+        pthread_create(&threadPool->threads[i], NULL, execute, threadPool);
+    }
+}
+
+void shutdown_thread_pool(ThreadPool *threadPool) { // 线程池的销毁
+    threadPool->shutdown = 0;
+    for (int i = 0; i < POOLSIZE; ++i) {
+        pthread_join(threadPool->threads[i], NULL);
+    }
+    free(threadPool->threads);
+    free(threadPool->tasks);
+    pthread_mutex_destroy(&threadPool->mutex);
+    pthread_cond_destroy(&threadPool->condition);
+}
+
+void submit_task(ThreadPool *threadPool, void (*function)(void *), void *argument) {
+    pthread_mutex_lock(&threadPool->mutex);
+    while (threadPool->size == POOLSIZE) {    // 等待直到有空闲位置
+        pthread_cond_wait(&threadPool->condition, &threadPool->mutex);
+    }
+    // 添加任务到队列
+    threadPool->tasks[threadPool->rear].function = function;
+    threadPool->tasks[threadPool->rear].argument = argument;
+    threadPool->rear = (threadPool->rear + 1) % POOLSIZE;
+    threadPool->size++;
+    // 通知线程有新任务
+    logger(ThreadPoolLog,"[Thread Dispatch]");
+    pthread_cond_signal(&threadPool->condition);
+    pthread_mutex_unlock(&threadPool->mutex);
+}
+
+
 int main() {
     init_daemon();
     init_server();
+    ThreadPool threadPool;
+    init_thread_pool(&threadPool);
     fd_set fds, read_fds; // 文件描述符集合
     int max_fd;
     // 指定要检查的文件描述符
@@ -311,23 +383,20 @@ int main() {
         // 检查哪些文件描述符已经准备好
         if (FD_ISSET(register_fd, &read_fds)) {
             pthread_t pthread;// 处理注册
-            pthread_create(&pthread, NULL, &registerHandler, NULL);
-            pthread_join(pthread, NULL);
+            submit_task(&threadPool, (void (*)(void *)) &registerHandler, NULL);
         }
         if (FD_ISSET(login_fd, &read_fds)) {
             pthread_t pthread; // 处理登录
-            pthread_create(&pthread, NULL, &loginHandler, NULL);
-            pthread_join(pthread, NULL);
+            submit_task(&threadPool, (void (*)(void *)) &loginHandler,NULL);
         }
         if (FD_ISSET(chat_fd, &read_fds)) {
             pthread_t pthread;// 处理聊天
-            pthread_create(&pthread, NULL, &chatHandler, NULL);
-            pthread_join(pthread, NULL);
+            submit_task(&threadPool, (void (*)(void *)) &chatHandler,NULL);
         }
         if (FD_ISSET(logout_fd, &read_fds)) {
             pthread_t pthread;// 处理注销
-            pthread_create(&pthread, NULL, &logoutHandler, NULL);
-            pthread_join(pthread, NULL);
+            submit_task(&threadPool, (void (*)(void *)) &logoutHandler,NULL);
         }
+        sleep(1);
     }
 }
